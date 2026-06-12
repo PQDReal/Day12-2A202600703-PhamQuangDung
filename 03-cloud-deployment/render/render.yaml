@@ -12,6 +12,7 @@ services:
   - type: web
     name: ai-agent
     runtime: python
+    rootDir: 03-cloud-deployment/railway
     region: singapore         # Chọn region gần user nhất
     plan: free                # free | starter | standard | pro
 
