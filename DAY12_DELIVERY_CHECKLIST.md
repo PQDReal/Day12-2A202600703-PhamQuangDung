@@ -572,7 +572,41 @@ Output rút gọn:
 Kết luận Exercise 4.3: rate limiting hoạt động đúng. 10 request đầu của user `student` thành công, `requests_remaining` giảm từ 9 xuống 0. Từ request thứ 11 trở đi, app trả lỗi rate limit với limit `10`, window `60` giây và `retry_after_seconds`.
 
 ### Exercise 4.4: Cost guard implementation
-[Explain your approach]
+Đánh giá file ban đầu:
+- `04-api-gateway/production/cost_guard.py` ban đầu đã có cost guard, nhưng chưa khớp hoàn toàn với yêu cầu Exercise 4.4.
+- Logic cũ dùng in-memory state, budget `$1/ngày/user`, reset theo ngày.
+- Trong comment cũng ghi rõ production nên lưu Redis/DB, không nên chỉ lưu in-memory.
+- Yêu cầu của `CODE_LAB.md` là `$10/tháng/user`, track spending trong Redis, reset đầu tháng.
+
+Đã cập nhật logic:
+- Thêm `check_budget(user_id: str, estimated_cost: float) -> bool` đúng dạng yêu cầu lab.
+- Budget mặc định: `$10/tháng/user`, có thể đổi bằng biến môi trường `MONTHLY_BUDGET_USD`.
+- Key Redis theo tháng: `budget:{user_id}:{YYYY-MM}:cost`.
+- Redis TTL: `32 ngày`, để dữ liệu tự hết hạn sau chu kỳ tháng.
+- Nếu có `REDIS_URL`, cost guard dùng Redis để phù hợp stateless/scale.
+- Nếu local chưa có Redis hoặc chưa set `REDIS_URL`, module fallback sang in-memory để app vẫn chạy được trong lab.
+- `record_usage()` tính cost từ input/output tokens và ghi usage sau khi LLM trả lời.
+- `get_usage()` trả về `cost_usd`, `budget_remaining_usd`, `budget_used_pct`, và backend storage đang dùng (`redis` hoặc `memory`).
+
+Các file đã cập nhật:
+- `04-api-gateway/production/cost_guard.py`
+- `04-api-gateway/production/app.py`
+- `04-api-gateway/production/requirements.txt` thêm `redis>=5.0.0`
+
+Test import và logic fallback local:
+```bash
+python -c "import app; from cost_guard import check_budget, cost_guard; print(app.app.title); print(check_budget('demo-user', 0.01)); print(cost_guard.get_usage('demo-user'))"
+```
+
+Output:
+```text
+Agent — Full Security Stack
+True
+{'user_id': 'demo-user', 'month': '2026-06', 'requests': 1, 'input_tokens': 66666, 'output_tokens': 0, 'cost_usd': 0.01, 'budget_usd': 10.0, 'budget_remaining_usd': 9.99, 'budget_used_pct': 0.1, 'storage': 'memory'}
+Redis not configured - using in-memory cost guard
+```
+
+Kết luận Exercise 4.4: cost guard hiện đã đạt yêu cầu logic chính của lab: kiểm tra budget theo user, giới hạn `$10/tháng`, có Redis support để dùng production/stateless, và có fallback memory để chạy local khi chưa bật Redis.
 
 ## Part 5: Scaling & Reliability
 

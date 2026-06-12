@@ -5,7 +5,7 @@ Kết hợp:
   ✅ JWT Authentication
   ✅ Role-based access (user / admin)
   ✅ Rate limiting (sliding window)
-  ✅ Cost guard (daily budget)
+  ✅ Cost guard (monthly budget)
   ✅ Input validation
   ✅ Security headers
 
@@ -150,14 +150,16 @@ async def ask_agent(
     # ✅ Ghi nhận usage (mock token count)
     input_tokens = len(body.question.split()) * 2
     output_tokens = len(response_text.split()) * 2
-    usage = cost_guard.record_usage(username, input_tokens, output_tokens)
+    cost_guard.record_usage(username, input_tokens, output_tokens)
+    usage = cost_guard.get_usage(username)
 
     return {
         "question": body.question,
         "answer": response_text,
         "usage": {
             "requests_remaining": rate_info["remaining"],
-            "budget_remaining_usd": usage.total_cost_usd,
+            "budget_remaining_usd": usage["budget_remaining_usd"],
+            "budget_used_usd": usage["cost_usd"],
         },
     }
 
@@ -174,9 +176,8 @@ def admin_stats(user: dict = Depends(verify_token)):
     if user["role"] != "admin":
         raise HTTPException(403, "Admin only")
     return {
-        "total_users": "N/A (in-memory demo)",
-        "global_cost_usd": cost_guard._global_cost,
-        "global_budget_usd": cost_guard.global_daily_budget_usd,
+        "budget_policy": "$10/month per user",
+        "storage": "redis" if cost_guard._redis else "memory",
     }
 
 
@@ -197,7 +198,7 @@ def health():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     print("\n=== Demo credentials ===")
-    print("  student / demo123  (10 req/min, $1/day budget)")
-    print("  teacher / teach456 (100 req/min, $1/day budget)")
+    print("  student / demo123  (10 req/min, $10/month budget)")
+    print("  teacher / teach456 (100 req/min, $10/month budget)")
     print(f"\nDocs: http://localhost:{port}/docs\n")
     uvicorn.run("app:app", host="0.0.0.0", port=port, reload=True)
